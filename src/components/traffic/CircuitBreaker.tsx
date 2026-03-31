@@ -4,7 +4,7 @@ import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Eye, MinusCircle } from "lucide-react";
 
-import type { CircuitState } from "./useCircuitBreakerSimulation";
+import type { CircuitState } from "@/types/simulation";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -71,7 +71,7 @@ export function CircuitBreaker({
 
       <CardContent className="space-y-4">
         <div className="relative rounded-2xl border border-white/10 bg-white/3 p-4">
-          <div className="flex items-center justify-between text-xs text-zinc-400">
+          <div className="flex items-center justify-between text-xs text-zinc-400" aria-hidden="true">
             <span className="inline-flex items-center gap-2">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
               CLOSED
@@ -93,6 +93,7 @@ export function CircuitBreaker({
               initial={{ x: "-60%" }}
               animate={{ x: "60%" }}
               transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+              aria-hidden="true"
             />
           </div>
 
@@ -106,11 +107,13 @@ export function CircuitBreaker({
               transition={{ type: "spring", stiffness: 340, damping: 22 }}
               className="absolute top-8 -translate-x-1/2"
               style={{ left: knobLeft }}
+              aria-label={`Circuit state: ${meta.label}`}
+              role="status"
             >
               <div
                 className={`relative h-7 w-7 rounded-full ${meta.dot} ${meta.glow} ring-1 ring-white/30`}
               >
-                <div className="absolute inset-0 rounded-full bg-white/15 backdrop-blur-sm" />
+                <div className="absolute inset-0 rounded-full bg-white/15 backdrop-blur-sm" aria-hidden="true" />
               </div>
             </motion.div>
           </AnimatePresence>
@@ -119,15 +122,16 @@ export function CircuitBreaker({
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-zinc-400">
             <span>Zero-Downtime Failover Readiness</span>
-            <span className="font-medium text-zinc-200">{Math.round(readiness * 100)}%</span>
+            <span className="font-medium text-zinc-200" aria-live="polite">{Math.round(readiness * 100)}%</span>
           </div>
-          <div className="h-2 rounded-full bg-white/5 ring-1 ring-inset ring-white/10 overflow-hidden">
+          <div className="h-2 rounded-full bg-white/5 ring-1 ring-inset ring-white/10 overflow-hidden" role="progressbar" aria-valuenow={Math.round(phaseProgress * 100)} aria-valuemin={0} aria-valuemax={100}>
             <motion.div
               className="h-full bg-gradient-to-r from-cyan-400/70 via-violet-400/60 to-emerald-400/60"
               style={{ width: `${Math.round(phaseProgress * 100)}%` }}
               initial={false}
               animate={{ width: `${Math.round(phaseProgress * 100)}%` }}
               transition={{ duration: 0.35, ease: "easeOut" }}
+              aria-hidden="true"
             />
           </div>
         </div>
@@ -135,11 +139,11 @@ export function CircuitBreaker({
         <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
           <div className="flex items-center justify-between text-xs text-zinc-400">
             <span>State Transition Events</span>
-            <span className="tabular-nums text-zinc-500">
+            <span className="tabular-nums text-zinc-500" aria-live="polite" aria-atomic="true">
               {eventLog.length ? `${eventLog.length} recent` : "waiting..."}
             </span>
           </div>
-          <div className="mt-2 max-h-36 space-y-2 overflow-auto pr-1">
+          <div className="mt-2 max-h-36 space-y-2 overflow-auto pr-1" role="log" aria-live="polite" aria-label="Circuit breaker state transition log">
             {eventLog.length ? (
               eventLog
                 .slice()

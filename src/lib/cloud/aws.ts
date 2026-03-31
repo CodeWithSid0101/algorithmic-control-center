@@ -7,9 +7,14 @@ import {
 import { EKSClient, ListClustersCommand } from "@aws-sdk/client-eks";
 import { Route53Client, ListHostedZonesCommand } from "@aws-sdk/client-route-53";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
+import { EC2Client, DescribeInstancesCommand } from "@aws-sdk/client-ec2";
 
-import type { CloudAccountStatus } from "./types";
-import type { AwsNormalizedTelemetry } from "./types";
+import type {
+  CloudAccountStatus,
+  AwsNormalizedTelemetry,
+  UnifiedInstance,
+  ProviderComputeInstances,
+} from "@/types/cloud";
 
 function getRegion() {
   return process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1";
@@ -218,3 +223,216 @@ export async function getAwsNormalizedTelemetry(): Promise<AwsNormalizedTelemetr
   };
 }
 
+/**
+ * Fetch metric data from CloudWatch for a specific instance
+ */
+async function getInstanceMetrics(
+  ec2InstanceId: string,
+  region: string,
+  credentials?: { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
+): Promise<{ cpuUsage: number | null; networkBytesIn: number | null; networkBytesOut: number | null }> {
+  try {
+    const cw = new CloudWatchClient({ region, ...(credentials ? { credentials } : {}) });
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - 5 * 60 * 1000); // Last 5 minutes
+
+    const response = await cw.send(
+      new GetMetricDataCommand({
+        MetricDataQueries: [
+          {
+            Id: "cpu_usage",
+            MetricStat: {
+              Metric: {
+                Namespace: "AWS/EC2",
+                MetricName: "CPUUtilization",
+                Dimensions: [
+                  {
+                    Name: "InstanceId",
+                    Value: ec2InstanceId,
+                  },
+                ],
+              },
+              Period: 300,
+              Stat: "Average",
+            },
+            ReturnData: true,
+          },
+          {
+            Id: "network_in",
+            MetricStat: {
+              Metric: {
+                Namespace: "AWS/EC2",
+                MetricName: "NetworkIn",
+                Dimensions: [
+                  {
+                    Name: "InstanceId",
+                    Value: ec2InstanceId,
+                  },
+                ],
+              },
+              Period: 300,
+              Stat: "Sum",
+            },
+            ReturnData: true,
+          },
+          {
+            Id: "network_out",
+            MetricStat: {
+              Metric: {
+                Namespace: "AWS/EC2",
+                MetricName: "NetworkOut",
+                Dimensions: [
+                  {
+                    Name: "InstanceId",
+                    Value: ec2InstanceId,
+                  },
+                ],
+              },
+              Period: 300,
+              Stat: "Sum",
+            },
+            ReturnData: true,
+          },
+        ],
+        StartTime: startTime,
+        EndTime: endTime,
+        ScanBy: "TimestampDescending",
+        MaxDatapoints: 1,
+      })
+    );
+
+    const cpuData = response.MetricDataResults?.find((m) => m.Id === "cpu_usage");
+    const networkInData = response.MetricDataResults?.find((m) => m.Id === "network_in");
+    const networkOutData = response.MetricDataResults?.find((m) => m.Id === "network_out");
+
+    return {
+      cpuUsage:
+        cpuData?.Values && cpuData.Values.length > 0
+          ? Math.round(Number(cpuData.Values[0]) * 100) / 100
+          : null,
+      networkBytesIn:
+        networkInData?.Values && networkInData.Values.length > 0
+          ? parseInt(String(networkInData.Values[0]), 10)
+          : null,
+      networkBytesOut:
+        networkOutData?.Values && networkOutData.Values.length > 0
+          ? parseInt(String(networkOutData.Values[0]), 10)
+          : null,
+    };
+  } catch (error) {
+    console.error(`[AWS] Failed to fetch metrics for ${ec2InstanceId}:`, error);
+    return { cpuUsage: null, networkBytesIn: null, networkBytesOut: null };
+  }
+}
+
+/**
+ * Fetch EC2 instances and normalize them into unified format
+ */
+export async function getAwsComputeInstances(): Promise<ProviderComputeInstances> {
+  const checkedAt = new Date().toISOString();
+  const region = getRegion();
+
+  try {
+    // Get credentials if assume role is configured
+    const assumedCreds = await getAssumedStsCredentials(region).catch(() => undefined);
+    const credentials = assumedCreds
+      ? {
+          accessKeyId: assumedCreds.AccessKeyId!,
+          secretAccessKey: assumedCreds.SecretAccessKey!,
+          sessionToken: assumedCreds.SessionToken!,
+        }
+      : undefined;
+
+    const ec2 = new EC2Client({ region, ...(credentials ? { credentials } : {}) });
+
+    // Fetch all EC2 instances
+    const response = await ec2.send(
+      new DescribeInstancesCommand({
+        Filters: [
+          {
+            Name: "instance-state-name",
+            Values: ["running", "stopped", "stopping", "starting"],
+          },
+        ],
+      })
+    );
+
+    const instances: UnifiedInstance[] = [];
+    let runningCount = 0;
+    let stoppedCount = 0;
+
+    // Iterate through reservations and instances
+    for (const reservation of response.Reservations ?? []) {
+      for (const instance of reservation.Instances ?? []) {
+        const instanceId = instance.InstanceId;
+        const state = instance.State?.Name;
+
+        if (!instanceId || !state) continue;
+
+        // Map AWS state to unified state
+        const unifiedState = (
+          ["running", "stopped", "stopping", "starting"].includes(state)
+            ? state
+            : "unknown"
+        ) as UnifiedInstance["state"];
+
+        if (unifiedState === "running") runningCount++;
+        if (unifiedState === "stopped") stoppedCount++;
+
+        // Fetch metrics for this instance
+        const metrics = await getInstanceMetrics(instanceId, region, credentials);
+
+        const unifiedInstance: UnifiedInstance = {
+          id: `aws:${region}:${instanceId}`,
+          provider: "aws",
+          name: instance.Tags?.find((t) => t.Key === "Name")?.Value || instanceId,
+          state: unifiedState,
+          instanceType: instance.InstanceType || "unknown",
+          region: instance.Placement?.AvailabilityZone || region,
+          cpuUsage: metrics.cpuUsage,
+          memoryUsage: null, // AWS doesn't expose memory via EC2 API by default
+          networkBytesIn: metrics.networkBytesIn,
+          networkBytesOut: metrics.networkBytesOut,
+          launchTime: instance.LaunchTime?.toISOString() || new Date().toISOString(),
+          lastUpdated: new Date().toISOString(),
+          metadata: {
+            awsInstanceId: instanceId,
+            tags: instance.Tags?.reduce(
+              (acc, tag) => {
+                if (tag.Key && tag.Value) {
+                  acc[tag.Key] = tag.Value;
+                }
+                return acc;
+              },
+              {} as Record<string, string>
+            ),
+          },
+        };
+
+        instances.push(unifiedInstance);
+      }
+    }
+
+    return {
+      provider: "aws",
+      connected: true,
+      instances,
+      totalInstances: instances.length,
+      runningCount,
+      stoppedCount,
+      checkedAt,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to fetch EC2 instances.";
+    return {
+      provider: "aws",
+      connected: false,
+      instances: [],
+      totalInstances: 0,
+      runningCount: 0,
+      stoppedCount: 0,
+      details: message,
+      checkedAt,
+    };
+  }
+}

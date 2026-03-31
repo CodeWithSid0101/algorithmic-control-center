@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.1020.0",
+    "@aws-sdk/client-ec2": "^3.1020.0",
     "@aws-sdk/client-eks": "^3.1020.0",
     "@aws-sdk/client-route-53": "^3.1020.0",
     "@aws-sdk/client-sts": "^3.1020.0",
+    "@azure/arm-compute": "^23.3.0",
     "@azure/arm-containerservice": "^25.0.0",
     "@azure/arm-monitor": "^7.0.0",
     "@azure/arm-subscriptions": "^6.0.0",

@@ -5,7 +5,7 @@ import { Globe2, KeyRound, Shield, Timer } from "lucide-react";
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Session } from "./useSessionSimulation";
+import type { Session } from "@/types/simulation";
 import { formatCountdown } from "./useSessionSimulation";
 
 export function SessionTable({ sessions, now }: { sessions: Session[]; now: number }) {
@@ -34,11 +34,12 @@ export function SessionTable({ sessions, now }: { sessions: Session[]; now: numb
               <TableHead className="text-right">Expires In</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody role="rowgroup" aria-label="Active JWT sessions with expiry timers">
             {sessions.map((s) => {
               const secondsLeft = Math.max(0, Math.floor((s.expiresAt - now) / 1000));
               const critical = secondsLeft < 5 * 60;
               const warning = !critical && secondsLeft < 15 * 60;
+              const statusText = critical ? "critical" : warning ? "warning" : "healthy";
               return (
                 <TableRow key={s.id}>
                   <TableCell>
@@ -60,8 +61,8 @@ export function SessionTable({ sessions, now }: { sessions: Session[]; now: numb
                   </TableCell>
                   <TableCell>
                     <div className="inline-flex items-center gap-1 text-xs text-zinc-300/90">
-                      <Globe2 className="h-3.5 w-3.5 text-emerald-300" />
-                      {s.region}
+                      <Globe2 className="h-3.5 w-3.5 text-emerald-300" aria-hidden="true" />
+                      <span>{s.region}</span>
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
@@ -74,6 +75,7 @@ export function SessionTable({ sessions, now }: { sessions: Session[]; now: numb
                               ? "h-3.5 w-3.5 text-amber-300"
                               : "h-3.5 w-3.5 text-emerald-300"
                         }
+                        aria-hidden="true"
                       />
                       <span
                         className={
@@ -83,6 +85,7 @@ export function SessionTable({ sessions, now }: { sessions: Session[]; now: numb
                               ? "text-amber-300"
                               : "text-emerald-300"
                         }
+                        aria-label={`Token expires in ${formatCountdown(s.expiresAt, now)} (${statusText})`}
                       >
                         {formatCountdown(s.expiresAt, now)}
                       </span>
