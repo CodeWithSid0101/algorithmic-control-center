@@ -99,13 +99,17 @@ function compilePolicy(rules: PolicyRuleId[]) {
   return { rego, aws, azure, gcp };
 }
 
+// Global counter for unique request IDs
+let requestCounter = 0;
+
 function randomRequest(): AccessRequest {
   const roles: AccessRequest["role"][] = ["admin", "operator", "auditor"];
   const geos: AccessRequest["geo"][] = ["IN", "US", "EU", "APAC"];
   const enc: AccessRequest["encryption"][] = ["TLS1.3", "TLS1.2"];
   const i = Math.floor(Math.random() * 10000);
+  requestCounter++;
   return {
-    id: `req-${Date.now()}-${i}`,
+    id: `req-${requestCounter}-${Date.now()}`,
     principal: `user${i}@corp`,
     role: roles[Math.floor(Math.random() * roles.length)],
     geo: geos[Math.floor(Math.random() * geos.length)],

@@ -127,8 +127,8 @@ export default function GovernancePlaceholder() {
             </div>
 
             <div className="max-h-64 space-y-2 overflow-auto pr-1">
-              {history.map((h) => (
-                <div key={h.request.id} className="rounded-xl border border-white/10 bg-white/3 p-2.5 text-xs">
+              {history.map((h, index) => (
+                <div key={`${h.request.id}-${index}`} className="rounded-xl border border-white/10 bg-white/3 p-2.5 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-zinc-400">{h.request.principal}</span>
                     <span
