@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: algorithmic-control-center
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AWS_REGION
+        value: us-east-1
+      - key: AWS_ACCESS_KEY_ID
+        fromSecret: aws-access-key-id
+      - key: AWS_SECRET_ACCESS_KEY
+        fromSecret: aws-secret-access-key
+      - key: AZURE_TENANT_ID
+        fromSecret: azure-tenant-id
+      - key: AZURE_CLIENT_ID
+        fromSecret: azure-client-id
+      - key: AZURE_CLIENT_SECRET
+        fromSecret: azure-client-secret
+      - key: AZURE_SUBSCRIPTION_ID
+        fromSecret: azure-subscription-id
